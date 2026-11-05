@@ -53,8 +53,8 @@ A modern, privacy-first personal finance management website designed to accompan
 ### Local Development
 ```bash
 # Clone the repository
-git clone https://github.com/Rajkumar-Aute/personal-khata-book-web.git
-cd personal-khata-book-web
+git clone https://github.com/Rajkumar-Aute/myfinhub.in.git
+cd myfinhub.in
 
 # Install dependencies
 npm install
