@@ -62,6 +62,12 @@ class DriveService {
           const grantedScopes = tokenResponse.scope || '';
           if (!grantedScopes.includes('drive')) {
             console.warn('User did not grant Google Drive permissions:', grantedScopes);
+            onError?.(
+              new Error(
+                'Google Drive permission was not selected. Please check the checkbox for "See, edit, create, and delete only the specific Google Drive files you use with this app" to enable sync.'
+              )
+            );
+            return;
           }
 
           this.accessToken = tokenResponse.access_token;
@@ -87,11 +93,12 @@ class DriveService {
   }
 
   signIn(onSuccess, onError) {
-    // If real Google OAuth Client ID is configured, trigger official Google Account Chooser with consent prompt
+    // If real Google OAuth Client ID is configured, trigger official Google sign-in
     if (this.clientId) {
       this.initTokenClient(onSuccess, onError);
       if (this.tokenClient) {
-        this.tokenClient.requestAccessToken({ prompt: 'consent select_account' });
+        // Use prompt: '' so Google remembers the user's consent and does NOT ask for permissions every time
+        this.tokenClient.requestAccessToken({ prompt: '' });
         return;
       }
     }
@@ -105,13 +112,6 @@ class DriveService {
   }
 
   signOut() {
-    if (this.accessToken && window.google?.accounts?.oauth2 && this.accessToken !== 'connected_drive_session') {
-      try {
-        window.google.accounts.oauth2.revoke(this.accessToken, () => {});
-      } catch (e) {
-        console.warn('Revoke failed:', e);
-      }
-    }
     this.accessToken = null;
     this.tokenExpiry = 0;
     this.user = null;
