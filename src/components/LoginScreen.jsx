@@ -43,29 +43,26 @@ export default function LoginScreen({ onContinueOffline }) {
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 right-10 w-72 h-72 bg-teal-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative z-10 max-w-md w-full space-y-6">
+      <div className="relative z-10 max-w-md w-full space-y-5">
         {/* App Logo & Title */}
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-2.5">
           <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-xl text-emerald-400">
             <BookOpen className="w-9 h-9" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-            Personal Khata Book
+            My Fin Hub
           </h1>
-          <p className="text-xs text-slate-400 font-medium">
-            Smart & Private Finance • Synced with Your Google Drive
+          <p className="text-xs text-slate-300 font-medium">
+            Personal Accounts Book to Record Daily Expenses & Income
           </p>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-xs font-bold shadow-xs">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <span>100% Private • Stored in Your Personal Google Drive</span>
+          </div>
         </div>
 
         {/* Login Card */}
-        <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6">
-          <div className="text-center space-y-1.5">
-            <h2 className="text-lg font-bold text-white">Welcome</h2>
-            <p className="text-xs text-slate-400">
-              Sign in with your Google account to automatically sync and access your Khata Book across all your devices.
-            </p>
-          </div>
-
+        <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-5">
           {/* Error / One-Time Configuration Banner */}
           {errorMsg && (
             <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3 text-xs text-amber-200">
@@ -93,7 +90,7 @@ export default function LoginScreen({ onContinueOffline }) {
                 </button>
               </form>
 
-              <div className="pt-1 flex items-center justify-between text-[11px]">
+              <div className="pt-1 flex items-center justify-end text-[11px]">
                 <a
                   href="https://console.cloud.google.com/apis/credentials"
                   target="_blank"
@@ -103,19 +100,12 @@ export default function LoginScreen({ onContinueOffline }) {
                   <span>Google Cloud Credentials</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
-                <button
-                  type="button"
-                  onClick={onContinueOffline}
-                  className="text-slate-400 hover:text-white underline font-medium cursor-pointer"
-                >
-                  Continue Offline &rarr;
-                </button>
               </div>
             </div>
           )}
 
           {/* Single-Click Google Sign-in Button */}
-          <div className="space-y-3 pt-1">
+          <div>
             <button
               type="button"
               onClick={handleGoogleSignInClick}
@@ -131,24 +121,22 @@ export default function LoginScreen({ onContinueOffline }) {
               </svg>
               <span>{syncStatus === 'syncing' ? 'Connecting to Google...' : 'Sign in with Google'}</span>
             </button>
+          </div>
 
-            <div className="relative flex items-center justify-center py-2">
-              <div className="border-t border-slate-800 w-full" />
-              <span className="bg-slate-900 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                or
-              </span>
-              <div className="border-t border-slate-800 w-full" />
+          {/* Key Google Drive Privacy Highlight Card */}
+          <div className="p-3.5 bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/30 rounded-2xl flex items-start gap-3 text-left">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 flex-shrink-0 mt-0.5">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-
-            {/* Offline Mode Button */}
-            <button
-              type="button"
-              onClick={onContinueOffline}
-              className="w-full flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-800 hover:text-white text-slate-300 font-semibold text-xs py-3 px-4 rounded-2xl border border-slate-700/80 transition-all cursor-pointer"
-            >
-              <span>Continue in Offline Mode</span>
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-            </button>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold text-white">Your Data, Your Google Drive</span>
+                <span className="text-[10px] px-1.5 py-0.5 bg-emerald-400/20 text-emerald-300 rounded font-bold uppercase tracking-wider">Zero Server</span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                All records stay strictly inside your own private Google Drive account. We operate zero databases — 100% private to you.
+              </p>
+            </div>
           </div>
 
           {/* Privacy Value Props */}
@@ -159,13 +147,13 @@ export default function LoginScreen({ onContinueOffline }) {
             </div>
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>Automatic real-time sync with Personal Khata Book app</span>
+              <span>Automatic real-time sync with Google Drive & mobile</span>
             </div>
           </div>
         </div>
 
         <p className="text-center text-[11px] text-slate-500">
-          Personal Khata Book • Private & Secure
+          My Fin Hub • Private & Secure
         </p>
       </div>
     </div>

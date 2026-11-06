@@ -77,6 +77,7 @@ export default function App() {
             onOpenAddTransaction={handleOpenAddTx}
             onEditTransaction={handleEditTx}
             onOpenBankAccounts={handleOpenBankAccounts}
+            onNavigateToLoans={() => setActiveTab('loans')}
           />
         )}
 

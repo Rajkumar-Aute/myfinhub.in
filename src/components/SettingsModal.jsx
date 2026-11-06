@@ -122,7 +122,7 @@ export default function SettingsModal({ isOpen, onClose }) {
             ) : (
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
                 <p className="text-xs text-gray-600">
-                  Connect your Google account to sync transactions automatically between your phone app and this website via your personal Google Drive folder (<strong>Personal Khata Book</strong>).
+                  Connect your Google account to sync transactions automatically between your phone app and this website via your personal Google Drive folder (<strong>My Fin Hub</strong>).
                 </p>
                 <button
                   onClick={() => loginWithGoogle()}

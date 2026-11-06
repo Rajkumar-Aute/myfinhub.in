@@ -1,6 +1,6 @@
-# Personal Khata Book - Web Application 📊 💰
+# My Fin Hub - Personal Accounts Book 📊 💰
 
-A modern, privacy-first personal finance management website designed to accompany the **Personal Khata Book** Android application, with **two-way seamless Google Drive synchronization** and **complete standalone / offline capabilities**.
+A simple, privacy-first personal accounts book to record daily expenses and income details (available at [myfinhub.in](https://myfinhub.in)), with **two-way seamless Google Drive synchronization** and **complete standalone / offline capabilities**.
 
 ---
 

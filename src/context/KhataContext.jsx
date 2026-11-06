@@ -142,7 +142,7 @@ export function KhataProvider({ children }) {
     if (!driveService.isAuthenticated()) return;
 
     setSyncStatus('syncing');
-    setSyncMessage('Syncing to Google Drive folder "Personal Khata Book"...');
+    setSyncMessage('Syncing to Google Drive folder "My Fin Hub"...');
 
     try {
       const payloadToSave = customPayload || {
@@ -179,7 +179,7 @@ export function KhataProvider({ children }) {
       const remoteData = await driveService.downloadKhataData();
       if (!remoteData) {
         // No remote backup file in Drive yet: initialize the Google Drive folder & file automatically!
-        setSyncMessage('Initializing Personal Khata Book in your Google Drive...');
+        setSyncMessage('Initializing My Fin Hub in your Google Drive...');
         await driveService.uploadKhataData({
           ...data,
           backupTimestamp: Date.now(),
@@ -566,7 +566,7 @@ export function KhataProvider({ children }) {
       const text = typeof jsonStringOrFile === 'string' ? jsonStringOrFile : '';
       const parsed = JSON.parse(text);
       if (!parsed.transactions && !parsed.loans && !parsed.bankAccounts) {
-        return { success: false, error: 'Unrecognized Khata Book backup JSON format.' };
+        return { success: false, error: 'Unrecognized My Fin Hub backup JSON format.' };
       }
 
       const txList = Array.isArray(parsed.transactions) ? parsed.transactions : [];

@@ -60,7 +60,7 @@ export default function ConnectDriveModal({ isOpen, onClose }) {
               <div>
                 <span className="font-bold text-slate-800">100% Private & Direct</span>
                 <p className="text-slate-500 mt-0.5">
-                  Your financial data stays inside your private Google Drive folder (<strong>Personal Khata Book</strong>). Zero external servers or data tracking.
+                  Your financial data stays inside your private Google Drive folder (<strong>My Fin Hub</strong>). Zero external servers or data tracking.
                 </p>
               </div>
             </div>
@@ -104,7 +104,7 @@ export default function ConnectDriveModal({ isOpen, onClose }) {
           >
             Cancel
           </button>
-          <span className="text-[11px] text-slate-400">Personal Khata Book</span>
+          <span className="text-[11px] text-slate-400">My Fin Hub</span>
         </div>
 
       </div>

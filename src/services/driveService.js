@@ -1,4 +1,4 @@
-const FOLDER_NAME = 'Personal Khata Book';
+const FOLDER_NAME = 'My Fin Hub';
 const FILE_NAME = 'personal_khata_data.json';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
@@ -136,7 +136,8 @@ class DriveService {
       return 'drive_folder_personal_khata';
     }
 
-    const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${FOLDER_NAME}' and trashed = false`;
+    // Search for 'My Fin Hub', 'myfinhub', or legacy 'Personal Khata Book'
+    const q = `mimeType = 'application/vnd.google-apps.folder' and (name = '${FOLDER_NAME}' or name = 'myfinhub' or name = 'Personal Khata Book') and trashed = false`;
     const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&fields=files(id,name)`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
@@ -156,7 +157,9 @@ class DriveService {
     const searchData = await searchRes.json();
 
     if (searchData.files && searchData.files.length > 0) {
-      return searchData.files[0].id;
+      // Prioritize folder named 'My Fin Hub' or 'myfinhub' if present
+      const preferredFolder = searchData.files.find(f => f.name === FOLDER_NAME || f.name.toLowerCase() === 'myfinhub') || searchData.files[0];
+      return preferredFolder.id;
     }
 
     // Create folder

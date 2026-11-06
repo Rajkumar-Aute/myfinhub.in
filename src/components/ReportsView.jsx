@@ -112,7 +112,7 @@ export default function ReportsView() {
 
   // Copy shareable summary text
   const handleCopySummary = () => {
-    let text = `📊 *Personal Khata Book - ${periodLabel} Report*\n`;
+    let text = `📊 *My Fin Hub - ${periodLabel} Report*\n`;
     text += `💰 Income: ${currencySymbol}${totalIncome.toLocaleString()}\n`;
     text += `💸 Expenses: ${currencySymbol}${totalExpense.toLocaleString()}\n`;
     text += `📈 Net Savings: ${currencySymbol}${netSavings.toLocaleString()} (${savingsRate}%)\n`;
@@ -128,7 +128,7 @@ export default function ReportsView() {
       });
     }
 
-    text += `\n_Generated via Personal Khata Book_`;
+    text += `\n_Generated via My Fin Hub_`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);

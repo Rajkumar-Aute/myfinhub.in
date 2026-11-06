@@ -25,7 +25,17 @@ export default function BankAccountsModal({ isOpen, onClose, initialAccountToEdi
 
   useEffect(() => {
     if (initialAccountToEdit) {
-      startEditAccount(initialAccountToEdit);
+      if (initialAccountToEdit.id) {
+        startEditAccount(initialAccountToEdit);
+      } else {
+        setSelectedAccount(null);
+        setBankName(initialAccountToEdit.bankName || '');
+        setAccountNumber(initialAccountToEdit.accountNumber || '');
+        setAccountName(initialAccountToEdit.name || initialAccountToEdit.accountName || '');
+        setBalanceText('');
+        setIsNegative(false);
+        setMode('ADD');
+      }
     } else {
       setMode('LIST');
       setSelectedAccount(null);
@@ -71,6 +81,9 @@ export default function BankAccountsModal({ isOpen, onClose, initialAccountToEdi
     const rawBal = parseFloat(balanceText) || 0;
     const targetBalance = isNegative ? -rawBal : rawBal;
 
+    const isCash = bankName.trim().toLowerCase().includes('cash') || accountName.trim().toLowerCase().includes('cash');
+    const computedType = isCash ? 'CASH' : isNegative ? 'CREDIT_CARD' : 'BANK';
+
     if (mode === 'EDIT' && selectedAccount) {
       // 1. Update basic account info
       updateBankAccount(selectedAccount.id, {
@@ -78,6 +91,7 @@ export default function BankAccountsModal({ isOpen, onClose, initialAccountToEdi
         accountName: computedName,
         bankName: bankName.trim(),
         accountNumber: accountNumber.trim(),
+        accountType: computedType,
         isLiability: isNegative
       });
 
@@ -92,6 +106,7 @@ export default function BankAccountsModal({ isOpen, onClose, initialAccountToEdi
         accountName: computedName,
         bankName: bankName.trim(),
         accountNumber: accountNumber.trim(),
+        accountType: computedType,
         openingBalance: targetBalance,
         isLiability: isNegative
       });
@@ -230,6 +245,63 @@ export default function BankAccountsModal({ isOpen, onClose, initialAccountToEdi
           ) : (
             /* Add or Edit Form */
             <form onSubmit={handleSubmit} className="space-y-4">
+              {mode === 'ADD' && (
+                <div className="space-y-1.5 pb-1">
+                  <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">
+                    Account Category
+                  </span>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountName('');
+                        setBankName('');
+                        setAccountNumber('');
+                        setIsNegative(false);
+                      }}
+                      className={`px-3 py-1.5 text-xs rounded-xl border transition-all font-semibold cursor-pointer ${
+                        !bankName.toLowerCase().includes('cash') && !accountName.toLowerCase().includes('cash') && !isNegative
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      🏦 Bank Account
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountName('Cash in Hand');
+                        setBankName('Cash');
+                        setAccountNumber('');
+                        setIsNegative(false);
+                      }}
+                      className={`px-3 py-1.5 text-xs rounded-xl border transition-all font-bold cursor-pointer ${
+                        bankName.toLowerCase().includes('cash') || accountName.toLowerCase().includes('cash')
+                          ? 'border-teal-600 bg-teal-50 text-teal-800'
+                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      💵 Liquid Cash / Wallet
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountName('Credit Card');
+                        setBankName('');
+                        setIsNegative(true);
+                      }}
+                      className={`px-3 py-1.5 text-xs rounded-xl border transition-all font-semibold cursor-pointer ${
+                        isNegative
+                          ? 'border-rose-600 bg-rose-50 text-rose-800'
+                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      💳 Credit Card / Loan
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {mode === 'EDIT' && (
                 <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-900">
                   <Sparkles className="w-4 h-4 text-emerald-700 flex-shrink-0" />
