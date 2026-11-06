@@ -35,18 +35,7 @@ jobs:
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID || vars.VITE_GOOGLE_CLIENT_ID }}
 
-      # Deploy to Hostinger via FTP (runs when Hostinger FTP secrets are set)
-      - name: 🚀 Deploy to Hostinger (myfinhub.in)
-        if: ${{ secrets.HOSTINGER_FTP_SERVER != '' }}
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          server-dir: public_html/
-          local-dir: ./dist/
-
-      # Deploy to GitHub Pages (as backup mirror)
+      # Setup and Deploy to GitHub Pages
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
