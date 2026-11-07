@@ -7,7 +7,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        khata: {
+        finhub: {
           primary: '#1B5E20',
           hover: '#144918',
           light: '#E8F5E9',

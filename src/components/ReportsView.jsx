@@ -4,7 +4,7 @@ import {
   Share2, Check, Download, ArrowUpRight, ArrowDownRight,
   Landmark, CreditCard, ChevronLeft, ChevronRight, Layers
 } from 'lucide-react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 
 export default function ReportsView() {
   const {
@@ -14,7 +14,7 @@ export default function ReportsView() {
     currencySymbol,
     selectedMonthKey,
     setSelectedMonthKey
-  } = useKhata();
+  } = useFinHub();
 
   const [viewMode, setViewMode] = useState('MONTHLY'); // 'MONTHLY' | 'YEARLY'
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());

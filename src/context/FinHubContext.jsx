@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { driveService } from '../services/driveService';
 
-const KhataContext = createContext(null);
+const FinHubContext = createContext(null);
 
-const STORAGE_KEY = 'personal_khata_local_data';
-const LAST_SYNC_KEY = 'personal_khata_last_sync_time';
+const STORAGE_KEY = 'myfinhub_local_data';
+const LAST_SYNC_KEY = 'myfinhub_last_sync_time';
 
-export function KhataProvider({ children }) {
+export function FinHubProvider({ children }) {
   // Load initial local data
   const [data, setData] = useState(() => {
     try {
@@ -83,20 +83,39 @@ export function KhataProvider({ children }) {
         .filter(t => (t.accountId === accId || (!t.accountId && t.accountName === accName)) && t.type === 'EXPENSE')
         .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
+      const isCard = acc.accountType === 'CREDIT_CARD';
+      const creditLimit = Number(acc.creditLimit) || 0;
       const openingBal = Number(acc.openingBalance ?? acc.initialBalance) || 0;
-      const liveBal = openingBal + incomes - expenses;
+
+      // For Credit Cards:
+      // Starting spent: either explicit startingSpent or if openingBal was negative
+      const initialSpent = isCard
+        ? (Number(acc.startingSpent ?? (openingBal < 0 ? Math.abs(openingBal) : 0)) || 0)
+        : 0;
+
+      // Current spent increases with card expenses, decreases with bill payments / incomes
+      const currentSpent = isCard ? Math.max(0, initialSpent + expenses - incomes) : 0;
+      const availableLimit = isCard && creditLimit > 0 ? Math.max(0, creditLimit - currentSpent) : 0;
+      const liveBal = isCard ? -currentSpent : (openingBal + incomes - expenses);
 
       return {
+        ...acc,
         id: acc.id,
         name: acc.name || acc.accountName || 'Unnamed Account',
         accountName: acc.name || acc.accountName || 'Unnamed Account',
         bankName: acc.bankName || '',
         accountNumber: acc.accountNumber || '',
+        accountType: acc.accountType || (isCard ? 'CREDIT_CARD' : 'BANK'),
         openingBalance: openingBal,
         initialBalance: openingBal,
+        creditLimit,
+        startingSpent: initialSpent,
+        currentSpent,
+        availableLimit,
         incomes,
         expenses,
-        isLiability: !!acc.isLiability || openingBal < 0 || acc.accountType === 'CREDIT_CARD',
+        isLiability: isCard || !!acc.isLiability || openingBal < 0,
+        isCreditCard: isCard,
         liveBalance: liveBal,
         currentBalance: liveBal
       };
@@ -150,7 +169,7 @@ export function KhataProvider({ children }) {
         backupTimestamp: Date.now(),
       };
 
-      await driveService.uploadKhataData(payloadToSave);
+      await driveService.uploadFinHubData(payloadToSave);
       const now = new Date();
       setLastSyncTime(now);
       localStorage.setItem(LAST_SYNC_KEY, now.toISOString());
@@ -176,11 +195,11 @@ export function KhataProvider({ children }) {
     setSyncMessage('Fetching latest data from Google Drive...');
 
     try {
-      const remoteData = await driveService.downloadKhataData();
+      const remoteData = await driveService.downloadFinHubData();
       if (!remoteData) {
         // No remote backup file in Drive yet: initialize the Google Drive folder & file automatically!
         setSyncMessage('Initializing My Fin Hub in your Google Drive...');
-        await driveService.uploadKhataData({
+        await driveService.uploadFinHubData({
           ...data,
           backupTimestamp: Date.now(),
         });
@@ -214,7 +233,7 @@ export function KhataProvider({ children }) {
       setSyncStatus('error');
       setSyncMessage(err.message || 'Drive restore failed');
     }
-  }, []);
+  }, [data]);
 
   // Automatically sync with Google Drive on mount if already authenticated
   useEffect(() => {
@@ -335,16 +354,23 @@ export function KhataProvider({ children }) {
     });
   }, [syncWithDrive]);
 
-  // Bank Account CRUD & Live Balance Adjustment
+  // Bank Account & Credit Card CRUD & Live Balance Adjustment
   const addBankAccount = useCallback((acc) => {
     const rawBal = Number(acc.openingBalance ?? acc.initialBalance) || 0;
+    const isCard = acc.accountType === 'CREDIT_CARD';
+    const creditLimit = Number(acc.creditLimit) || 0;
+    const startingSpent = Number(acc.startingSpent) || (rawBal < 0 ? Math.abs(rawBal) : 0);
+
     const newAcc = {
       id: crypto.randomUUID ? crypto.randomUUID() : `acc_${Date.now()}`,
       name: (acc.name || acc.accountName || '').trim(),
       bankName: (acc.bankName || '').trim(),
       accountNumber: (acc.accountNumber || '').trim(),
-      openingBalance: rawBal,
-      isLiability: acc.isLiability !== undefined ? !!acc.isLiability : rawBal < 0,
+      accountType: acc.accountType || (isCard ? 'CREDIT_CARD' : 'BANK'),
+      creditLimit: isCard ? creditLimit : 0,
+      startingSpent: isCard ? startingSpent : 0,
+      openingBalance: isCard ? -startingSpent : rawBal,
+      isLiability: isCard || (acc.isLiability !== undefined ? !!acc.isLiability : rawBal < 0),
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -368,11 +394,20 @@ export function KhataProvider({ children }) {
         ...prev,
         bankAccounts: prev.bankAccounts.map(a => {
           if (a.id === id) {
+            const isCard = (fields.accountType || a.accountType) === 'CREDIT_CARD';
             const openBal = fields.openingBalance !== undefined
               ? Number(fields.openingBalance)
               : fields.initialBalance !== undefined
                 ? Number(fields.initialBalance)
                 : a.openingBalance;
+
+            const creditLimit = fields.creditLimit !== undefined
+              ? Number(fields.creditLimit)
+              : (a.creditLimit || 0);
+
+            const startingSpent = fields.startingSpent !== undefined
+              ? Number(fields.startingSpent)
+              : (a.startingSpent || (openBal < 0 ? Math.abs(openBal) : 0));
 
             return {
               ...a,
@@ -381,8 +416,11 @@ export function KhataProvider({ children }) {
               name: (fields.name || fields.accountName || a.name || '').trim(),
               bankName: (fields.bankName !== undefined ? fields.bankName : (a.bankName || '')).trim(),
               accountNumber: (fields.accountNumber !== undefined ? fields.accountNumber : (a.accountNumber || '')).trim(),
-              openingBalance: openBal,
-              isLiability: fields.isLiability !== undefined ? !!fields.isLiability : (openBal < 0 || a.isLiability),
+              accountType: fields.accountType || a.accountType || (isCard ? 'CREDIT_CARD' : 'BANK'),
+              creditLimit: isCard ? creditLimit : (a.creditLimit || 0),
+              startingSpent: isCard ? startingSpent : (a.startingSpent || 0),
+              openingBalance: isCard ? -startingSpent : openBal,
+              isLiability: isCard || (fields.isLiability !== undefined ? !!fields.isLiability : (openBal < 0 || a.isLiability)),
               updatedAt: Date.now()
             };
           }
@@ -394,7 +432,7 @@ export function KhataProvider({ children }) {
     });
   }, [syncWithDrive]);
 
-  // Directly adjust the available live balance of an account
+  // Directly adjust the available live balance or credit card spent
   const adjustAccountBalance = useCallback((accountId, newTargetBalance) => {
     const target = Number(newTargetBalance) || 0;
     setData(prev => {
@@ -403,6 +441,8 @@ export function KhataProvider({ children }) {
       if (!account) return prev;
 
       const accName = account.name || account.accountName || '';
+      const isCard = account.accountType === 'CREDIT_CARD';
+
       const incomes = transactions
         .filter(t => (t.accountId === accountId || (!t.accountId && t.accountName === accName)) && t.type === 'INCOME')
         .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -411,6 +451,31 @@ export function KhataProvider({ children }) {
         .filter(t => (t.accountId === accountId || (!t.accountId && t.accountName === accName)) && t.type === 'EXPENSE')
         .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
+      if (isCard) {
+        // Target is target spent (positive number)
+        const targetSpent = Math.abs(target);
+        // targetSpent = startingSpent + expenses - incomes
+        // => startingSpent = targetSpent - expenses + incomes
+        const newStartingSpent = Math.max(0, targetSpent - expenses + incomes);
+        const nextData = {
+          ...prev,
+          bankAccounts: prev.bankAccounts.map(a => {
+            if (a.id === accountId) {
+              return {
+                ...a,
+                startingSpent: newStartingSpent,
+                openingBalance: -newStartingSpent,
+                updatedAt: Date.now()
+              };
+            }
+            return a;
+          })
+        };
+        syncWithDrive(nextData);
+        return nextData;
+      }
+
+      // Standard bank / cash account
       // target = newOpeningBal + incomes - expenses
       // => newOpeningBal = target - incomes + expenses
       const newOpeningBal = target - incomes + expenses;
@@ -428,6 +493,62 @@ export function KhataProvider({ children }) {
           }
           return a;
         })
+      };
+      syncWithDrive(nextData);
+      return nextData;
+    });
+  }, [syncWithDrive]);
+
+  // Pay credit card bill from bank account
+  const payCreditCardBill = useCallback((cardId, fromBankAccountId, amount, paymentMode = 'Bank Transfer', note = '') => {
+    const parsedAmount = Number(amount) || 0;
+    if (parsedAmount <= 0) return;
+
+    setData(prev => {
+      const card = (prev.bankAccounts || []).find(a => a.id === cardId);
+      const bank = (prev.bankAccounts || []).find(a => a.id === fromBankAccountId);
+      const cardName = card ? (card.name || card.accountName) : 'Credit Card';
+      const bankName = bank ? (bank.name || bank.accountName) : 'Bank Account';
+      const now = Date.now();
+      const d = new Date(now);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const year = d.getFullYear();
+
+      // 1. Expense out of bank account
+      const bankTxn = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `txn_${Date.now()}_1`,
+        type: 'EXPENSE',
+        amount: parsedAmount,
+        category: `Credit Card Bill - ${cardName}`,
+        paymentMode,
+        accountId: fromBankAccountId || null,
+        accountName: bankName,
+        timestamp: now,
+        monthKey,
+        year,
+        note: note || `Bill payment for ${cardName}`,
+        isCreditCardPayment: true
+      };
+
+      // 2. Inflow / reduction of debt into Credit Card
+      const cardTxn = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `txn_${Date.now()}_2`,
+        type: 'INCOME',
+        amount: parsedAmount,
+        category: `Bill Payment from ${bankName}`,
+        paymentMode,
+        accountId: cardId,
+        accountName: cardName,
+        timestamp: now + 1,
+        monthKey,
+        year,
+        note: note || `Bill payment received from ${bankName}`,
+        isCreditCardPayment: true
+      };
+
+      const nextData = {
+        ...prev,
+        transactions: [cardTxn, bankTxn, ...prev.transactions]
       };
       syncWithDrive(nextData);
       return nextData;
@@ -553,7 +674,7 @@ export function KhataProvider({ children }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `personal_khata_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `myfinhub_backup_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -595,7 +716,7 @@ export function KhataProvider({ children }) {
   }, []);
 
   return (
-    <KhataContext.Provider
+    <FinHubContext.Provider
       value={{
         data,
         transactions: data.transactions || [],
@@ -630,6 +751,7 @@ export function KhataProvider({ children }) {
         updateBankAccount,
         adjustAccountBalance,
         deleteBankAccount,
+        payCreditCardBill,
         addLoan,
         deleteLoan,
         settleLoan,
@@ -642,12 +764,12 @@ export function KhataProvider({ children }) {
       }}
     >
       {children}
-    </KhataContext.Provider>
+    </FinHubContext.Provider>
   );
 }
 
-export function useKhata() {
-  const context = useContext(KhataContext);
-  if (!context) throw new Error('useKhata must be used within a KhataProvider');
+export function useFinHub() {
+  const context = useContext(FinHubContext);
+  if (!context) throw new Error('useFinHub must be used within a FinHubProvider');
   return context;
 }

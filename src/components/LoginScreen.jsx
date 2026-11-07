@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import {
   Cloud, ShieldCheck, ArrowRight, BookOpen, Sparkles, AlertCircle, ExternalLink, Key
 } from 'lucide-react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 import { driveService } from '../services/driveService';
 
 export default function LoginScreen({ onContinueOffline }) {
-  const { loginWithGoogle, syncStatus, saveClientId } = useKhata();
+  const { loginWithGoogle, syncStatus, saveClientId } = useFinHub();
   const [errorMsg, setErrorMsg] = useState('');
   const [tempClientId, setTempClientId] = useState('');
 

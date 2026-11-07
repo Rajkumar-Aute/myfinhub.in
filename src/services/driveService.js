@@ -1,15 +1,15 @@
 const FOLDER_NAME = 'My Fin Hub';
-const FILE_NAME = 'personal_khata_data.json';
+const FILE_NAME = 'myfinhub.json';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
 class DriveService {
   constructor() {
     try {
-      this.accessToken = localStorage.getItem('khata_google_token') || null;
-      this.tokenExpiry = Number(localStorage.getItem('khata_google_token_expiry')) || 0;
-      const rawUser = localStorage.getItem('khata_google_user');
+      this.accessToken = localStorage.getItem('myfinhub_google_token') || null;
+      this.tokenExpiry = Number(localStorage.getItem('myfinhub_google_token_expiry')) || 0;
+      const rawUser = localStorage.getItem('myfinhub_google_user');
       this.user = (rawUser && rawUser !== 'undefined' && rawUser !== 'null') ? JSON.parse(rawUser) : null;
-      this.clientId = (import.meta.env?.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('khata_google_client_id') || '').trim();
+      this.clientId = (import.meta.env?.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('myfinhub_google_client_id') || '').trim();
     } catch (e) {
       console.warn('Failed to read auth state from localStorage:', e);
       this.accessToken = null;
@@ -22,7 +22,7 @@ class DriveService {
 
   setClientId(clientId) {
     this.clientId = (clientId || '').trim();
-    localStorage.setItem('khata_google_client_id', this.clientId);
+    localStorage.setItem('myfinhub_google_client_id', this.clientId);
     this.tokenClient = null;
   }
 
@@ -72,14 +72,14 @@ class DriveService {
 
           this.accessToken = tokenResponse.access_token;
           this.tokenExpiry = Date.now() + (Number(tokenResponse.expires_in) || 3600) * 1000;
-          localStorage.setItem('khata_google_token', this.accessToken);
-          localStorage.setItem('khata_google_token_expiry', this.tokenExpiry.toString());
+          localStorage.setItem('myfinhub_google_token', this.accessToken);
+          localStorage.setItem('myfinhub_google_token_expiry', this.tokenExpiry.toString());
 
           // Fetch user profile
           try {
             const user = await this.fetchUserProfile();
             this.user = user;
-            localStorage.setItem('khata_google_user', JSON.stringify(user));
+            localStorage.setItem('myfinhub_google_user', JSON.stringify(user));
             onSuccess?.(user);
           } catch (err) {
             console.error('Failed to fetch user profile:', err);
@@ -115,9 +115,9 @@ class DriveService {
     this.accessToken = null;
     this.tokenExpiry = 0;
     this.user = null;
-    localStorage.removeItem('khata_google_token');
-    localStorage.removeItem('khata_google_token_expiry');
-    localStorage.removeItem('khata_google_user');
+    localStorage.removeItem('myfinhub_google_token');
+    localStorage.removeItem('myfinhub_google_token_expiry');
+    localStorage.removeItem('myfinhub_google_user');
   }
 
   async fetchUserProfile() {
@@ -133,11 +133,11 @@ class DriveService {
 
   async getOrCreateFolder() {
     if (this.accessToken === 'connected_drive_session') {
-      return 'drive_folder_personal_khata';
+      return 'drive_folder_myfinhub';
     }
 
-    // Search for 'My Fin Hub', 'myfinhub', or legacy 'Personal Khata Book'
-    const q = `mimeType = 'application/vnd.google-apps.folder' and (name = '${FOLDER_NAME}' or name = 'myfinhub' or name = 'Personal Khata Book') and trashed = false`;
+    // Search for 'My Fin Hub' or 'myfinhub'
+    const q = `mimeType = 'application/vnd.google-apps.folder' and (name = '${FOLDER_NAME}' or name = 'myfinhub') and trashed = false`;
     const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&fields=files(id,name)`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
@@ -157,7 +157,6 @@ class DriveService {
     const searchData = await searchRes.json();
 
     if (searchData.files && searchData.files.length > 0) {
-      // Prioritize folder named 'My Fin Hub' or 'myfinhub' if present
       const preferredFolder = searchData.files.find(f => f.name === FOLDER_NAME || f.name.toLowerCase() === 'myfinhub') || searchData.files[0];
       return preferredFolder.id;
     }
@@ -187,16 +186,16 @@ class DriveService {
     return createData.id;
   }
 
-  async uploadKhataData(payload) {
+  async uploadFinHubData(payload) {
     if (this.accessToken === 'connected_drive_session') {
-      localStorage.setItem('personal_khata_drive_synced_payload', JSON.stringify(payload));
+      localStorage.setItem('myfinhub_drive_synced_payload', JSON.stringify(payload));
       return { id: 'simulated_drive_file_id', name: FILE_NAME };
     }
 
     const folderId = await this.getOrCreateFolder();
 
-    // Check if file exists in folder (ordered by latest modified)
-    const q = `name = '${FILE_NAME}' and '${folderId}' in parents and trashed = false`;
+    // Check if file exists in folder
+    const q = `(name = '${FILE_NAME}' or name = 'myfinhub_data.json') and '${folderId}' in parents and trashed = false`;
     const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
@@ -207,26 +206,40 @@ class DriveService {
         const errJson = await searchRes.json();
         msg = errJson.error?.message || msg;
       } catch (e) {}
-      throw new Error(`Failed to search for Khata file in Drive: ${msg}`);
+      throw new Error(`Failed to search for My Fin Hub file in Drive: ${msg}`);
     }
     const searchData = await searchRes.json();
     const files = searchData.files || [];
-    const existingFile = files[0];
+    const existingFile = files.find(f => f.name === FILE_NAME) || files[0];
 
-    // Auto-clean any duplicate files so there is strictly ONE file in Google Drive
+    // Auto-clean duplicate files so there is strictly ONE file in Google Drive
     if (files.length > 1) {
-      for (let i = 1; i < files.length; i++) {
-        fetch(`https://www.googleapis.com/drive/v3/files/${files[i].id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${this.accessToken}` }
-        }).catch(e => console.warn('Cleaned up duplicate Drive file:', e));
+      for (const f of files) {
+        if (f.id !== existingFile.id) {
+          fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${this.accessToken}` }
+          }).catch(e => console.warn('Cleaned up duplicate Drive file:', e));
+        }
       }
     }
 
     const fileContent = JSON.stringify(payload, null, 2);
 
     if (existingFile) {
-      // Update existing file
+      // If the existing file was named with another name, rename it to FILE_NAME ('myfinhub.json')
+      if (existingFile.name !== FILE_NAME) {
+        fetch(`https://www.googleapis.com/drive/v3/files/${existingFile.id}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: FILE_NAME }),
+        }).catch(e => console.warn('Failed to rename file in Drive:', e));
+      }
+
+      // Update existing file content
       const updateRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`, {
         method: 'PATCH',
         headers: {
@@ -242,7 +255,7 @@ class DriveService {
           const errJson = await updateRes.json();
           msg = errJson.error?.message || msg;
         } catch (e) {}
-        throw new Error(`Failed to update Khata data in Drive: ${msg}`);
+        throw new Error(`Failed to update My Fin Hub data in Drive: ${msg}`);
       }
       return await updateRes.json();
     } else {
@@ -281,21 +294,21 @@ class DriveService {
           const errJson = await createRes.json();
           msg = errJson.error?.message || msg;
         } catch (e) {}
-        throw new Error(`Failed to upload Khata data to Drive: ${msg}`);
+        throw new Error(`Failed to upload My Fin Hub data to Drive: ${msg}`);
       }
       return await createRes.json();
     }
   }
 
-  async downloadKhataData() {
+  async downloadFinHubData() {
     if (this.accessToken === 'connected_drive_session') {
-      const saved = localStorage.getItem('personal_khata_drive_synced_payload') || localStorage.getItem('personal_khata_local_data');
+      const saved = localStorage.getItem('myfinhub_drive_synced_payload') || localStorage.getItem('myfinhub_local_data');
       return saved ? JSON.parse(saved) : null;
     }
 
     const folderId = await this.getOrCreateFolder();
 
-    const q = `name = '${FILE_NAME}' and '${folderId}' in parents and trashed = false`;
+    const q = `(name = '${FILE_NAME}' or name = 'myfinhub_data.json') and '${folderId}' in parents and trashed = false`;
     const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
@@ -310,7 +323,7 @@ class DriveService {
         this.signOut();
         throw new Error('Google Drive permission required. Please sign in again and check the Drive permission box.');
       }
-      throw new Error(`Failed to find Khata data in Drive: ${msg}`);
+      throw new Error(`Failed to find My Fin Hub data in Drive: ${msg}`);
     }
     const searchData = await searchRes.json();
     const files = searchData.files || [];
@@ -319,18 +332,21 @@ class DriveService {
       return null;
     }
 
+    const targetFile = files.find(f => f.name === FILE_NAME) || files[0];
+
     // Auto-clean any duplicate files so there is strictly ONE file in Google Drive
     if (files.length > 1) {
-      for (let i = 1; i < files.length; i++) {
-        fetch(`https://www.googleapis.com/drive/v3/files/${files[i].id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${this.accessToken}` }
-        }).catch(e => console.warn('Cleaned up duplicate Drive file:', e));
+      for (const f of files) {
+        if (f.id !== targetFile.id) {
+          fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${this.accessToken}` }
+          }).catch(e => console.warn('Cleaned up duplicate Drive file:', e));
+        }
       }
     }
 
-    const fileId = files[0].id;
-    const downloadRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    const downloadRes = await fetch(`https://www.googleapis.com/drive/v3/files/${targetFile.id}?alt=media`, {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
 
@@ -340,7 +356,7 @@ class DriveService {
         const errJson = await downloadRes.json();
         msg = errJson.error?.message || msg;
       } catch (e) {}
-      throw new Error(`Failed to download Khata data from Drive: ${msg}`);
+      throw new Error(`Failed to download My Fin Hub data from Drive: ${msg}`);
     }
     return await downloadRes.json();
   }

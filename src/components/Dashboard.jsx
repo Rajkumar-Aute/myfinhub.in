@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import {
   TrendingUp, TrendingDown, Wallet, Landmark, Plus, ArrowUpRight,
   ArrowDownRight, Calendar, Search, Edit2, Trash2, ChevronLeft,
-  ChevronRight, AlertCircle, ShieldCheck, CreditCard, Filter, ArrowRight, Banknote
+  ChevronRight, AlertCircle, ShieldCheck, CreditCard, Filter, ArrowRight, Banknote, PiggyBank
 } from 'lucide-react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 
 export default function Dashboard({
   onOpenAddTransaction,
@@ -21,7 +21,7 @@ export default function Dashboard({
     currencySymbol,
     selectedMonthKey,
     setSelectedMonthKey
-  } = useKhata();
+  } = useFinHub();
 
   const [accountCardTab, setAccountCardTab] = useState('BANKS'); // 'BANKS' | 'LOANS'
   const [searchTerm, setSearchTerm] = useState('');
@@ -79,30 +79,74 @@ export default function Dashboard({
     return type === 'CASH' || name.includes('cash') || name.includes('रोकड़') || name.includes('नकद');
   };
 
-  // Total Net Balance across all Bank Accounts (excluding Cash & Liabilities)
-  const totalBankNetBalance = useMemo(() => {
-    return bankAccountsWithBalance
-      .filter(acc => !acc.isLiability && !isCashAccount(acc))
-      .reduce((sum, acc) => sum + (Number(acc.liveBalance) || 0), 0);
+  // Helper to identify Investment accounts
+  const isInvestmentAccount = (acc) => {
+    const type = (acc.accountType || '').toUpperCase();
+    const name = ((acc.name || acc.accountName || '') + ' ' + (acc.bankName || '')).toLowerCase();
+    return (
+      type === 'INVESTMENT' ||
+      name.includes('invest') ||
+      name.includes('mutual') ||
+      name.includes('stock') ||
+      name.includes('share') ||
+      name.includes('demat') ||
+      name.includes('gold') ||
+      name.includes('nps') ||
+      name.includes('ppf') ||
+      name.includes('epf') ||
+      name.includes('fixed deposit') ||
+      name.includes('fd') ||
+      name.includes('crypto')
+    );
+  };
+
+  // Segregated Accounts
+  const creditCardAccounts = useMemo(() => {
+    return bankAccountsWithBalance.filter(acc => acc.accountType === 'CREDIT_CARD');
   }, [bankAccountsWithBalance]);
+
+  const bankOnlyAccounts = useMemo(() => {
+    return bankAccountsWithBalance.filter(acc => acc.accountType !== 'CREDIT_CARD' && !acc.isLiability && !isCashAccount(acc) && !isInvestmentAccount(acc));
+  }, [bankAccountsWithBalance]);
+
+  const investmentAccounts = useMemo(() => {
+    return bankAccountsWithBalance.filter(acc => isInvestmentAccount(acc));
+  }, [bankAccountsWithBalance]);
+
+  const cashAccounts = useMemo(() => {
+    return bankAccountsWithBalance.filter(acc => isCashAccount(acc));
+  }, [bankAccountsWithBalance]);
+
+  // Total Net Balance across all Bank Accounts (excluding Cash, Liabilities & Investments)
+  const totalBankNetBalance = useMemo(() => {
+    return bankOnlyAccounts.reduce((sum, acc) => sum + (Number(acc.liveBalance) || 0), 0);
+  }, [bankOnlyAccounts]);
 
   // Total Liquid Cash across all Cash / Wallet accounts
   const totalLiquidCash = useMemo(() => {
-    return bankAccountsWithBalance
-      .filter(acc => isCashAccount(acc))
-      .reduce((sum, acc) => sum + (Number(acc.liveBalance) || 0), 0);
-  }, [bankAccountsWithBalance]);
+    return cashAccounts.reduce((sum, acc) => sum + (Number(acc.liveBalance) || 0), 0);
+  }, [cashAccounts]);
 
-  // Total Debt across all Loan Accounts (pending borrowed loans + liability accounts)
+  // Total Investments Value across all Investment accounts
+  const totalInvestments = useMemo(() => {
+    return investmentAccounts.reduce((sum, acc) => sum + (Number(acc.liveBalance) || 0), 0);
+  }, [investmentAccounts]);
+
+  // Total Credit Card Outstanding Spent & Available Limit
+  const totalCreditCardSpent = useMemo(() => {
+    return creditCardAccounts.reduce((sum, acc) => sum + (Number(acc.currentSpent) || 0), 0);
+  }, [creditCardAccounts]);
+
+  const totalCreditCardAvailable = useMemo(() => {
+    return creditCardAccounts.reduce((sum, acc) => sum + (Number(acc.availableLimit) || 0), 0);
+  }, [creditCardAccounts]);
+
+  // Total Debt across all Loan Accounts (Strictly Loan Accounts, separated from Credit Cards)
   const totalLoanDebt = useMemo(() => {
-    const loanPending = (loansWithSummary || [])
+    return (loansWithSummary || [])
       .filter(l => l.type === 'BORROWED' && !l.isSettled)
       .reduce((sum, l) => sum + (Number(l.remainingBalance) || 0), 0);
-    const ccLiability = bankAccountsWithBalance
-      .filter(acc => acc.isLiability && acc.liveBalance < 0)
-      .reduce((sum, acc) => sum + Math.abs(acc.liveBalance), 0);
-    return loanPending + ccLiability;
-  }, [loansWithSummary, bankAccountsWithBalance]);
+  }, [loansWithSummary]);
 
   // Month navigation
   const handlePrevMonth = () => {
@@ -130,7 +174,17 @@ export default function Dashboard({
   const filteredTransactions = useMemo(() => {
     return monthTransactions
       .filter(t => {
-        if (filterType !== 'ALL' && t.type !== filterType) return false;
+        if (filterType === 'EXPENSE') {
+          if (t.type !== 'EXPENSE') return false;
+        } else if (filterType === 'INCOME') {
+          if (t.type !== 'INCOME') return false;
+        } else if (filterType === 'INVESTMENT') {
+          const isInv = t.isInvestment || t.category?.toLowerCase().includes('invest') || t.category?.toLowerCase().includes('mutual') || t.category?.toLowerCase().includes('stock') || t.category?.toLowerCase().includes('gold') || t.category?.toLowerCase().includes('fd');
+          if (!isInv) return false;
+        } else if (filterType === 'LOAN') {
+          const isL = t.loanId || t.principalPaid > 0 || t.interestPaid > 0 || t.category?.toLowerCase().includes('loan') || t.category?.toLowerCase().includes('emi');
+          if (!isL) return false;
+        }
         if (!searchTerm) return true;
         const s = searchTerm.toLowerCase();
         return (
@@ -169,20 +223,38 @@ export default function Dashboard({
           </button>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
           <button
             onClick={() => onOpenAddTransaction('EXPENSE')}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm shadow-rose-200 transition-all"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm shadow-rose-200 transition-all cursor-pointer"
+            title="Record spending or expense"
           >
             <TrendingDown className="w-4 h-4 stroke-[2.5]" />
             <span>+ Expense</span>
           </button>
           <button
             onClick={() => onOpenAddTransaction('INCOME')}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm shadow-emerald-200 transition-all"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm shadow-emerald-200 transition-all cursor-pointer"
+            title="Record received income"
           >
             <TrendingUp className="w-4 h-4 stroke-[2.5]" />
             <span>+ Income</span>
+          </button>
+          <button
+            onClick={() => onOpenAddTransaction('INVESTMENT')}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm shadow-indigo-200 transition-all cursor-pointer"
+            title="Record mutual funds, stocks, gold, FD, or crypto investment"
+          >
+            <PiggyBank className="w-4 h-4 stroke-[2.5]" />
+            <span>+ Investment</span>
+          </button>
+          <button
+            onClick={() => onOpenAddTransaction('LOAN_REPAYMENT')}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm shadow-purple-200 transition-all cursor-pointer"
+            title="Record loan EMI or udhar repayment"
+          >
+            <Landmark className="w-4 h-4 stroke-[2.5]" />
+            <span>+ Loan Repay</span>
           </button>
         </div>
       </div>
@@ -286,29 +358,39 @@ export default function Dashboard({
           )}
         </div>
 
-        {/* Right 1 Col: Banks & Loan Accounts */}
+        {/* Right 1 Col: Banks, Cards, Loans & Investments */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col">
           <div className="pb-3 border-b border-slate-100 mb-3 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Landmark className="w-5 h-5 text-emerald-700" />
-                <h3 className="font-bold text-slate-900 text-sm">Banks & Loan Accounts</h3>
+                <h3 className="font-bold text-slate-900 text-sm">Banks, Cards, Loans & Investments</h3>
               </div>
               <button
                 onClick={() => {
                   if (accountCardTab === 'LOANS') {
                     onNavigateToLoans?.();
+                  } else if (accountCardTab === 'CARDS') {
+                    onOpenBankAccounts?.({ name: 'Credit Card', bankName: '', accountType: 'CREDIT_CARD' });
+                  } else if (accountCardTab === 'INVESTMENTS') {
+                    onOpenBankAccounts?.({ name: 'Mutual Funds', bankName: 'Investment', accountType: 'INVESTMENT' });
                   } else {
                     onOpenBankAccounts?.(null);
                   }
                 }}
                 className="px-2.5 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-200/70 cursor-pointer"
               >
-                {accountCardTab === 'LOANS' ? 'Manage Loans' : 'Manage Banks'}
+                {accountCardTab === 'LOANS'
+                  ? 'Manage Loans'
+                  : accountCardTab === 'CARDS'
+                    ? 'Manage Cards'
+                    : accountCardTab === 'INVESTMENTS'
+                      ? 'Manage Investments'
+                      : 'Manage Banks'}
               </button>
             </div>
 
-            {/* Total Net Balance, Liquid Cash & Total Debt Summary */}
+            {/* Total Net Balance, Liquid Cash, Credit Cards, Investments & Loan Debt Summary */}
             <div className="p-3 bg-slate-50/90 rounded-xl border border-slate-200/70 space-y-1.5 text-xs">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-600 font-medium truncate">
@@ -327,6 +409,31 @@ export default function Dashboard({
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-600 font-medium truncate flex items-center gap-1">
+                  <CreditCard className="w-3.5 h-3.5 text-rose-500" />
+                  Credit Cards Spent (Outstanding):
+                </span>
+                <span className="font-extrabold text-rose-600 flex-shrink-0 text-sm">
+                  {currencySymbol}{totalCreditCardSpent.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-600 font-medium truncate pl-4">
+                  ↳ Total Available Credit Limit:
+                </span>
+                <span className="font-bold text-emerald-700 flex-shrink-0">
+                  {currencySymbol}{totalCreditCardAvailable.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-600 font-medium truncate">
+                  Total Investments:
+                </span>
+                <span className="font-extrabold text-indigo-700 flex-shrink-0 text-sm">
+                  {currencySymbol}{totalInvestments.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-600 font-medium truncate">
                   Total Debt in All Loan Accounts:
                 </span>
@@ -336,39 +443,61 @@ export default function Dashboard({
               </div>
             </div>
 
-            {/* Switcher Tabs: Bank Accounts vs Loan Accounts */}
-            <div className="flex p-1 bg-slate-100 rounded-xl">
+            {/* Switcher Tabs: Banks vs Cards vs Investments vs Loans */}
+            <div className="flex p-1 bg-slate-100 rounded-xl gap-1">
               <button
                 type="button"
                 onClick={() => setAccountCardTab('BANKS')}
-                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer truncate ${
                   accountCardTab === 'BANKS'
                     ? 'bg-white text-emerald-800 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Bank Accounts ({bankAccountsWithBalance.length})
+                Banks ({bankOnlyAccounts.length + cashAccounts.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountCardTab('CARDS')}
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer truncate ${
+                  accountCardTab === 'CARDS'
+                    ? 'bg-white text-rose-800 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Cards ({creditCardAccounts.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountCardTab('INVESTMENTS')}
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer truncate ${
+                  accountCardTab === 'INVESTMENTS'
+                    ? 'bg-white text-indigo-800 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Investments ({investmentAccounts.length})
               </button>
               <button
                 type="button"
                 onClick={() => setAccountCardTab('LOANS')}
-                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer truncate ${
                   accountCardTab === 'LOANS'
                     ? 'bg-white text-emerald-800 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Loan Accounts ({(loansWithSummary || []).length})
+                Loans ({(loansWithSummary || []).length})
               </button>
             </div>
           </div>
 
           <div className="space-y-2 overflow-y-auto max-h-[340px] pr-1 flex-1">
             {accountCardTab === 'BANKS' ? (
-              bankAccountsWithBalance.length === 0 ? (
+              (bankOnlyAccounts.length + cashAccounts.length) === 0 ? (
                 <div className="py-8 text-center text-slate-400 text-xs">
                   <Landmark className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-400" />
-                  <p>No accounts added yet.</p>
+                  <p>No bank or cash accounts added yet.</p>
                   <div className="mt-3 flex items-center justify-center gap-3">
                     <button
                       onClick={() => onOpenBankAccounts?.(null)}
@@ -385,7 +514,7 @@ export default function Dashboard({
                   </div>
                 </div>
               ) : (
-                bankAccountsWithBalance.map((acc) => {
+                [...bankOnlyAccounts, ...cashAccounts].map((acc) => {
                   const isNeg = acc.liveBalance < 0;
                   const isCash = isCashAccount(acc);
                   return (
@@ -422,6 +551,139 @@ export default function Dashboard({
                         </div>
                         <div className="text-[10px] text-slate-400 font-medium">
                           Init: {currencySymbol}{acc.openingBalance.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )
+            ) : accountCardTab === 'CARDS' ? (
+              creditCardAccounts.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-30 text-rose-500" />
+                  <p className="font-medium text-slate-600">No credit cards added yet.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Track card limits, spent amounts & available credit</p>
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => onOpenBankAccounts?.({ name: 'Credit Card', bankName: '', accountType: 'CREDIT_CARD' })}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    >
+                      + Add Credit Card
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                creditCardAccounts.map((card) => {
+                  const cardLimit = card.creditLimit || 0;
+                  const cardSpent = card.currentSpent || 0;
+                  const cardAvail = card.availableLimit !== undefined ? card.availableLimit : Math.max(0, cardLimit - cardSpent);
+                  const utilPercent = cardLimit > 0 ? Math.min(100, Math.round((cardSpent / cardLimit) * 100)) : 0;
+
+                  return (
+                    <div
+                      key={card.id}
+                      onClick={() => onOpenBankAccounts?.(card)}
+                      className="p-3 bg-slate-50 hover:bg-rose-50/50 border border-slate-200/70 hover:border-rose-300 rounded-xl transition-all cursor-pointer group space-y-2"
+                      title="Click to view card details, update limit or pay bill"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <CreditCard className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                            <span className="font-bold text-xs text-slate-900 group-hover:text-rose-800 transition-colors truncate">
+                              {card.name}
+                            </span>
+                            <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[9px] font-bold rounded">
+                              Credit Card
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {card.bankName || 'Credit Card'} {card.accountNumber ? `•••• ${card.accountNumber}` : ''}
+                          </div>
+                        </div>
+
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-xs font-extrabold text-emerald-700">
+                            Avail: {currencySymbol}{cardAvail.toLocaleString()}
+                          </div>
+                          <div className="text-[10px] text-rose-600 font-semibold">
+                            Spent: {currencySymbol}{cardSpent.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Mini Limit Utilization Bar */}
+                      <div className="pt-1 border-t border-slate-200/50">
+                        <div className="flex justify-between text-[10px] text-slate-400 font-medium mb-1">
+                          <span>Limit: {currencySymbol}{cardLimit.toLocaleString()}</span>
+                          <span className={utilPercent > 75 ? 'text-red-600 font-bold' : 'text-slate-500'}>
+                            {utilPercent}% used
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              utilPercent > 75 ? 'bg-red-600' : utilPercent > 40 ? 'bg-amber-500' : 'bg-emerald-600'
+                            }`}
+                            style={{ width: `${utilPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )
+            ) : accountCardTab === 'INVESTMENTS' ? (
+              investmentAccounts.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-30 text-indigo-500" />
+                  <p className="font-medium text-slate-600">No investment accounts added yet.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Track Mutual Funds, Stocks, Gold, FD, PPF & more</p>
+                  <div className="mt-3 flex items-center justify-center flex-wrap gap-2">
+                    <button
+                      onClick={() => onOpenBankAccounts?.({ name: 'Mutual Funds', bankName: 'Investment', accountType: 'INVESTMENT' })}
+                      className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    >
+                      + Add Mutual Funds
+                    </button>
+                    <button
+                      onClick={() => onOpenBankAccounts?.({ name: 'Stocks / Demat', bankName: 'Investment', accountType: 'INVESTMENT' })}
+                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                    >
+                      + Add Stocks
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                investmentAccounts.map((acc) => {
+                  return (
+                    <div
+                      key={acc.id}
+                      onClick={() => onOpenBankAccounts?.(acc)}
+                      className="p-3 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200/70 hover:border-indigo-300 rounded-xl flex items-center justify-between transition-all cursor-pointer group"
+                      title="Click to update invested value or edit details"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-1.5">
+                          <TrendingUp className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                          <span className="font-bold text-xs text-slate-900 group-hover:text-indigo-800 transition-colors truncate">
+                            {acc.name}
+                          </span>
+                          <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 text-[9px] font-bold rounded">
+                            Investment
+                          </span>
+                          <Edit2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-700 opacity-60 group-hover:opacity-100 transition-opacity ml-0.5" />
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {acc.bankName || 'Investment Portfolio'} {acc.accountNumber ? `••• ${acc.accountNumber}` : ''}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-extrabold text-indigo-700">
+                          {currencySymbol}{acc.liveBalance.toLocaleString()}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-medium">
+                          Invested Value
                         </div>
                       </div>
                     </div>
@@ -496,11 +758,11 @@ export default function Dashboard({
 
           <div className="flex flex-wrap items-center gap-3">
             {/* Type Filter Buttons */}
-            <div className="inline-flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl border border-slate-200">
+            <div className="inline-flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl border border-slate-200 flex-wrap">
               <button
                 type="button"
                 onClick={() => setFilterType('ALL')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   filterType === 'ALL'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -511,7 +773,7 @@ export default function Dashboard({
               <button
                 type="button"
                 onClick={() => setFilterType('EXPENSE')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   filterType === 'EXPENSE'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -522,13 +784,35 @@ export default function Dashboard({
               <button
                 type="button"
                 onClick={() => setFilterType('INCOME')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   filterType === 'INCOME'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Income
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('INVESTMENT')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filterType === 'INVESTMENT'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Investments
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('LOAN')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filterType === 'LOAN'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Loans
               </button>
             </div>
 

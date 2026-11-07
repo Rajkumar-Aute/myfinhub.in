@@ -1,5 +1,5 @@
 import React from 'react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 import {
   BookOpen,
   Landmark,
@@ -22,7 +22,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenBankAccounts, on
     lastSyncTime,
     syncWithDrive,
     logoutFromGoogle
-  } = useKhata();
+  } = useFinHub();
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-md">

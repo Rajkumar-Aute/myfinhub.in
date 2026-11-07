@@ -7,7 +7,7 @@ A simple, privacy-first personal accounts book to record daily expenses and inco
 ## 🌟 Key Features
 
 ### 1. Two-Way Google Drive Synchronization
-- **Direct Drive Storage**: Backs up and synchronizes directly to the user's private Google Drive under the folder **`Personal Khata Book`** in the portable file **`personal_khata_data.json`**.
+- **Direct Drive Storage**: Backs up and synchronizes directly to the user's private Google Drive under the folder **`My Fin Hub`** in the portable file **`myfinhub.json`**.
 - **No Third-Party Database Server**: Your financial data is 100% private.
 - **Bi-Directional Sync**:
   - Add or update an expense on the website &rarr; automatically updates your Android app on sync.

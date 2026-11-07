@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, PlusCircle, ArrowDownCircle, ArrowUpCircle, Landmark,
-  CreditCard, Calendar, FileText, Check, AlertCircle, ChevronDown, ChevronUp, Sparkles
+  CreditCard, Calendar, FileText, Check, AlertCircle, ChevronDown, ChevronUp, Sparkles,
+  TrendingUp, TrendingDown, PiggyBank
 } from 'lucide-react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BILL_SUB_OPTIONS, PAYMENT_MODES } from '../constants/categories';
+
+export const INVESTMENT_CATEGORIES = [
+  'Mutual Funds (SIP / Lumpsum)',
+  'Stocks / Demat',
+  'Gold / SGB',
+  'Fixed Deposit (FD)',
+  'PPF / EPF',
+  'Crypto',
+  'Other Investment'
+];
 
 export default function AddTransactionModal({ isOpen, onClose, initialData = null }) {
   const {
@@ -13,12 +24,15 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
     bankAccountsWithBalance,
     loansWithSummary,
     currencySymbol
-  } = useKhata();
+  } = useFinHub();
 
+  // Mode: 'EXPENSE' | 'INCOME' | 'INVESTMENT' | 'LOAN_REPAYMENT'
+  const [entryMode, setEntryMode] = useState('EXPENSE');
   const [type, setType] = useState('EXPENSE');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Grocery');
   const [customCategory, setCustomCategory] = useState('');
+  const [customInvestment, setCustomInvestment] = useState('');
   const [billSubCategory, setBillSubCategory] = useState('');
   const [customBill, setCustomBill] = useState('');
   const [paymentMode, setPaymentMode] = useState('UPI');
@@ -26,30 +40,56 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
   const [dateStr, setDateStr] = useState(() => new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
 
-  // Loan Repayment split (if category is Loan / EMI or repaying loan)
+  // Loan Repayment split
   const [isLoanRepayment, setIsLoanRepayment] = useState(false);
+  const [isInvestment, setIsInvestment] = useState(false);
   const [selectedLoanId, setSelectedLoanId] = useState('');
   const [principalPaid, setPrincipalPaid] = useState('');
   const [interestPaid, setInterestPaid] = useState('');
 
   const [error, setError] = useState('');
 
+  const isInvestAccount = (acc) => {
+    const type = (acc.accountType || '').toUpperCase();
+    const name = ((acc.name || acc.accountName || '') + ' ' + (acc.bankName || '')).toLowerCase();
+    return type === 'INVESTMENT' || name.includes('invest') || name.includes('mutual') || name.includes('stock') || name.includes('gold') || name.includes('fd') || name.includes('ppf');
+  };
+
+  const bankAndCashAccounts = bankAccountsWithBalance.filter(a => a.accountType !== 'CREDIT_CARD' && !isInvestAccount(a));
+  const creditCardAccounts = bankAccountsWithBalance.filter(a => a.accountType === 'CREDIT_CARD');
+
   // Filter active borrowed loans for repayment suggestions
   const activeBorrowedLoans = loansWithSummary.filter(l => l.type === 'BORROWED' && !l.isSettled);
 
   useEffect(() => {
     if (initialData) {
-      setType(initialData.type || 'EXPENSE');
+      const isL = !!(initialData.isLoanRepayment || initialData.loanId || (initialData.principalPaid > 0) || initialData.category === 'Loan Repayment / EMI' || initialData.category === 'Loan / EMI');
+      const isInv = !!(initialData.isInvestment || (typeof initialData.category === 'string' && initialData.category.startsWith('Investment')));
+      const determinedMode = initialData.entryMode || (isL ? 'LOAN_REPAYMENT' : isInv ? 'INVESTMENT' : initialData.type === 'INCOME' ? 'INCOME' : 'EXPENSE');
+
+      setEntryMode(determinedMode);
+      setType(determinedMode === 'INCOME' ? 'INCOME' : 'EXPENSE');
+      setIsLoanRepayment(isL || determinedMode === 'LOAN_REPAYMENT');
+      setIsInvestment(isInv || determinedMode === 'INVESTMENT');
+
       setAmount(initialData.amount ? String(initialData.amount) : '');
       setDateStr(initialData.timestamp ? new Date(initialData.timestamp).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
       setPaymentMode(initialData.paymentMode || 'UPI');
       setSelectedAccountId(initialData.accountId || '');
       setNote(initialData.note || '');
 
-      const isExp = (initialData.type || 'EXPENSE') === 'EXPENSE';
-      const cat = initialData.category || (isExp ? 'Grocery' : 'Salary');
+      const isExp = determinedMode === 'EXPENSE';
+      const cat = initialData.category || (determinedMode === 'INCOME' ? 'Salary' : determinedMode === 'INVESTMENT' ? 'Mutual Funds (SIP / Lumpsum)' : 'Grocery');
 
-      if (cat.startsWith('Bill - ') || cat.startsWith('Bills - ')) {
+      if (determinedMode === 'INVESTMENT') {
+        const invClean = cat.replace(/^Investment - /, '');
+        if (INVESTMENT_CATEGORIES.includes(invClean)) {
+          setCategory(invClean);
+        } else {
+          setCategory('Other Investment');
+          setCustomInvestment(invClean);
+        }
+      } else if (cat.startsWith('Bill - ') || cat.startsWith('Bills - ')) {
         setCategory('Bills');
         const sub = cat.replace(/^Bills? - /, '');
         if (BILL_SUB_OPTIONS.includes(sub)) {
@@ -65,23 +105,23 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
         setCategory(cat);
       }
 
-      if (initialData.loanId || initialData.principalPaid > 0 || initialData.interestPaid > 0) {
-        setIsLoanRepayment(true);
-        setSelectedLoanId(initialData.loanId || '');
+      if (isL) {
+        setSelectedLoanId(initialData.loanId || (activeBorrowedLoans.length > 0 ? activeBorrowedLoans[0].id : ''));
         setPrincipalPaid(initialData.principalPaid ? String(initialData.principalPaid) : '');
         setInterestPaid(initialData.interestPaid ? String(initialData.interestPaid) : '');
       } else {
-        setIsLoanRepayment(false);
         setSelectedLoanId('');
         setPrincipalPaid('');
         setInterestPaid('');
       }
     } else {
       // Reset form
+      setEntryMode('EXPENSE');
       setType('EXPENSE');
       setAmount('');
       setCategory('Grocery');
       setCustomCategory('');
+      setCustomInvestment('');
       setBillSubCategory('');
       setCustomBill('');
       setPaymentMode('UPI');
@@ -89,6 +129,7 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
       setDateStr(new Date().toISOString().split('T')[0]);
       setNote('');
       setIsLoanRepayment(false);
+      setIsInvestment(false);
       setSelectedLoanId('');
       setPrincipalPaid('');
       setInterestPaid('');
@@ -98,12 +139,32 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
 
   if (!isOpen) return null;
 
-  const handleTypeChange = (newType) => {
-    setType(newType);
-    if (newType === 'INCOME') {
-      setCategory('Salary');
+  const handleEntryModeChange = (newMode) => {
+    setEntryMode(newMode);
+    setError('');
+
+    if (newMode === 'INCOME') {
+      setType('INCOME');
       setIsLoanRepayment(false);
-    } else {
+      setIsInvestment(false);
+      setCategory('Salary');
+    } else if (newMode === 'INVESTMENT') {
+      setType('EXPENSE');
+      setIsLoanRepayment(false);
+      setIsInvestment(true);
+      setCategory('Mutual Funds (SIP / Lumpsum)');
+    } else if (newMode === 'LOAN_REPAYMENT') {
+      setType('EXPENSE');
+      setIsLoanRepayment(true);
+      setIsInvestment(false);
+      setCategory('Loan Repayment / EMI');
+      if (activeBorrowedLoans.length > 0 && !selectedLoanId) {
+        setSelectedLoanId(activeBorrowedLoans[0].id);
+      }
+    } else { // 'EXPENSE'
+      setType('EXPENSE');
+      setIsLoanRepayment(false);
+      setIsInvestment(false);
       setCategory('Grocery');
     }
   };
@@ -112,14 +173,11 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
     setCategory(cat);
     if (cat === 'Bills') {
       if (!billSubCategory) setBillSubCategory('Electricity');
-    } else if (cat === 'Loan / EMI') {
+    } else if (cat === 'Loan Repayment / EMI' || cat === 'Loan / EMI') {
       setIsLoanRepayment(true);
+      setEntryMode('LOAN_REPAYMENT');
       if (activeBorrowedLoans.length > 0 && !selectedLoanId) {
         setSelectedLoanId(activeBorrowedLoans[0].id);
-      }
-    } else {
-      if (isLoanRepayment && cat !== 'Loan / EMI') {
-        setIsLoanRepayment(false);
       }
     }
   };
@@ -136,7 +194,15 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
 
     // Determine final category string
     let finalCategory = category;
-    if (category === 'Bills') {
+    if (entryMode === 'INVESTMENT') {
+      if (category === 'Other Investment' && customInvestment.trim()) {
+        finalCategory = `Investment - ${customInvestment.trim()}`;
+      } else if (!category.startsWith('Investment')) {
+        finalCategory = `Investment - ${category}`;
+      }
+    } else if (entryMode === 'LOAN_REPAYMENT') {
+      finalCategory = 'Loan Repayment / EMI';
+    } else if (category === 'Bills') {
       if (billSubCategory === 'Other Bill' && customBill.trim()) {
         finalCategory = `Bill - ${customBill.trim()}`;
       } else if (billSubCategory) {
@@ -157,7 +223,7 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
     let iPaid = 0;
     let lId = null;
 
-    if (isLoanRepayment) {
+    if (entryMode === 'LOAN_REPAYMENT' || isLoanRepayment) {
       lId = selectedLoanId || null;
       pPaid = parseFloat(principalPaid) || 0;
       iPaid = parseFloat(interestPaid) || 0;
@@ -172,7 +238,7 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
     const selectedAcc = bankAccountsWithBalance.find(a => a.id === selectedAccountId);
 
     const transactionData = {
-      type,
+      type: entryMode === 'INCOME' ? 'INCOME' : 'EXPENSE',
       amount: parsedAmount,
       category: finalCategory,
       paymentMode,
@@ -182,7 +248,9 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
       note: note.trim(),
       principalPaid: pPaid,
       interestPaid: iPaid,
-      loanId: lId
+      loanId: lId,
+      isInvestment: entryMode === 'INVESTMENT',
+      isLoanRepayment: entryMode === 'LOAN_REPAYMENT' || isLoanRepayment
     };
 
     if (initialData?.id) {
@@ -199,16 +267,40 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-scaleUp">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-          <div className="flex items-center gap-2">
-            <div className={`p-2 rounded-xl ${type === 'EXPENSE' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-              {type === 'EXPENSE' ? <ArrowDownCircle className="w-5 h-5" /> : <ArrowUpCircle className="w-5 h-5" />}
+          <div className="flex items-center gap-2.5">
+            <div className={`p-2 rounded-xl ${
+              entryMode === 'EXPENSE'
+                ? 'bg-rose-100 text-rose-700'
+                : entryMode === 'INCOME'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : entryMode === 'INVESTMENT'
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'bg-purple-100 text-purple-700'
+            }`}>
+              {entryMode === 'EXPENSE' ? (
+                <ArrowDownCircle className="w-5 h-5" />
+              ) : entryMode === 'INCOME' ? (
+                <ArrowUpCircle className="w-5 h-5" />
+              ) : entryMode === 'INVESTMENT' ? (
+                <PiggyBank className="w-5 h-5" />
+              ) : (
+                <Landmark className="w-5 h-5" />
+              )}
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-900">
-                {initialData ? 'Edit Entry' : 'Add New Transaction'}
+                {initialData
+                  ? (entryMode === 'INVESTMENT' ? 'Edit Investment' : entryMode === 'LOAN_REPAYMENT' ? 'Edit Loan Repayment' : entryMode === 'INCOME' ? 'Edit Income' : 'Edit Expense')
+                  : (entryMode === 'INVESTMENT' ? 'Record Investment' : entryMode === 'LOAN_REPAYMENT' ? 'Record Loan Repayment / EMI' : entryMode === 'INCOME' ? 'Add New Income' : 'Add New Expense')}
               </h2>
               <p className="text-xs text-gray-500">
-                {type === 'EXPENSE' ? 'Record spending or loan EMI' : 'Record received income'}
+                {entryMode === 'EXPENSE'
+                  ? 'Record daily spending, shopping or bills'
+                  : entryMode === 'INCOME'
+                    ? 'Record received salary, rent, or business income'
+                    : entryMode === 'INVESTMENT'
+                      ? 'Record Mutual Funds, Stocks, Gold, FD, PPF, or Crypto'
+                      : 'Record loan EMI installment or borrowed debt payment'}
               </p>
             </div>
           </div>
@@ -229,36 +321,60 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
             </div>
           )}
 
-          {/* Type Toggle: Expense vs Income */}
-          <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-100 rounded-xl">
+          {/* 4 Modes Toggle: Expense vs Income vs Investment vs Loan Repay */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1.5 bg-gray-100 rounded-xl">
             <button
               type="button"
-              onClick={() => handleTypeChange('EXPENSE')}
-              className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                type === 'EXPENSE'
-                  ? 'bg-red-600 text-white shadow-sm'
+              onClick={() => handleEntryModeChange('EXPENSE')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                entryMode === 'EXPENSE'
+                  ? 'bg-rose-600 text-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <ArrowDownCircle className="w-4 h-4" />
-              Expense
+              <ArrowDownCircle className="w-3.5 h-3.5" />
+              <span>Expense</span>
             </button>
             <button
               type="button"
-              onClick={() => handleTypeChange('INCOME')}
-              className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                type === 'INCOME'
-                  ? 'bg-emerald-700 text-white shadow-sm'
+              onClick={() => handleEntryModeChange('INCOME')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                entryMode === 'INCOME'
+                  ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <ArrowUpCircle className="w-4 h-4" />
-              Income
+              <ArrowUpCircle className="w-3.5 h-3.5" />
+              <span>Income</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleEntryModeChange('INVESTMENT')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                entryMode === 'INVESTMENT'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <PiggyBank className="w-3.5 h-3.5" />
+              <span>Investment</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleEntryModeChange('LOAN_REPAYMENT')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                entryMode === 'LOAN_REPAYMENT'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Landmark className="w-3.5 h-3.5" />
+              <span>Loan Repay</span>
             </button>
           </div>
 
           {/* Quick Loan Repayment Banner (if Expense and active loans exist) */}
-          {type === 'EXPENSE' && activeBorrowedLoans.length > 0 && !isLoanRepayment && (
+          {entryMode === 'EXPENSE' && activeBorrowedLoans.length > 0 && (
             <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs text-amber-900">
                 <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
@@ -266,16 +382,10 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setIsLoanRepayment(true);
-                  setCategory('Loan / EMI');
-                  if (!selectedLoanId && activeBorrowedLoans.length > 0) {
-                    setSelectedLoanId(activeBorrowedLoans[0].id);
-                  }
-                }}
-                className="px-2.5 py-1 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors whitespace-nowrap shadow-sm"
+                onClick={() => handleEntryModeChange('LOAN_REPAYMENT')}
+                className="px-2.5 py-1 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors whitespace-nowrap shadow-sm cursor-pointer"
               >
-                Split Capital & Interest
+                Switch to Loan Repayment
               </button>
             </div>
           )}
@@ -283,10 +393,24 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
           {/* Amount Field */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
-              Amount ({currencySymbol}) *
+              {entryMode === 'INVESTMENT'
+                ? `Invested Amount (${currencySymbol}) *`
+                : entryMode === 'LOAN_REPAYMENT'
+                  ? `Total EMI / Repayment Amount (${currencySymbol}) *`
+                  : entryMode === 'INCOME'
+                    ? `Income Amount (${currencySymbol}) *`
+                    : `Expense Amount (${currencySymbol}) *`}
             </label>
             <div className="relative rounded-xl shadow-sm">
-              <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-gray-400 font-bold text-xl">
+              <span className={`absolute inset-y-0 left-0 pl-4 flex items-center font-bold text-xl ${
+                entryMode === 'INVESTMENT'
+                  ? 'text-indigo-600'
+                  : entryMode === 'LOAN_REPAYMENT'
+                    ? 'text-purple-600'
+                    : entryMode === 'INCOME'
+                      ? 'text-emerald-600'
+                      : 'text-rose-600'
+              }`}>
                 {currencySymbol}
               </span>
               <input
@@ -298,58 +422,73 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
                 value={amount}
                 onChange={(e) => {
                   setAmount(e.target.value);
-                  if (isLoanRepayment && !principalPaid && !interestPaid) {
+                  if (entryMode === 'LOAN_REPAYMENT' && !principalPaid && !interestPaid) {
                     setPrincipalPaid(e.target.value);
                   }
                 }}
                 className={`w-full pl-10 pr-4 py-3 text-2xl font-bold rounded-xl border focus:outline-none focus:ring-2 transition-all ${
-                  type === 'EXPENSE'
-                    ? 'border-gray-200 focus:border-red-500 focus:ring-red-200 text-red-600'
-                    : 'border-gray-200 focus:border-emerald-600 focus:ring-emerald-200 text-emerald-700'
+                  entryMode === 'INVESTMENT'
+                    ? 'border-indigo-200 focus:border-indigo-600 focus:ring-indigo-200 text-indigo-700'
+                    : entryMode === 'LOAN_REPAYMENT'
+                      ? 'border-purple-200 focus:border-purple-600 focus:ring-purple-200 text-purple-700'
+                      : entryMode === 'INCOME'
+                        ? 'border-emerald-200 focus:border-emerald-600 focus:ring-emerald-200 text-emerald-700'
+                        : 'border-gray-200 focus:border-rose-500 focus:ring-rose-200 text-rose-600'
                 }`}
               />
             </div>
           </div>
 
           {/* Loan Repayment Split Box */}
-          {isLoanRepayment && (
-            <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3">
+          {entryMode === 'LOAN_REPAYMENT' && (
+            <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3 animate-fadeIn">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
                   <Landmark className="w-4 h-4 text-purple-600" />
-                  Loan Repayment Details
+                  Loan Repayment & Debt Reduction
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setIsLoanRepayment(false)}
-                  className="text-xs text-purple-600 hover:text-purple-800 underline font-medium"
-                >
-                  Disable split
-                </button>
+                {amount && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrincipalPaid(amount);
+                      setInterestPaid('0');
+                    }}
+                    className="text-[11px] text-purple-700 bg-purple-100 hover:bg-purple-200 px-2 py-0.5 rounded-md font-semibold transition"
+                  >
+                    100% Principal
+                  </button>
+                )}
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Select Loan / EMI
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Select Borrowed Loan / Udhar *
                 </label>
-                <select
-                  value={selectedLoanId}
-                  onChange={(e) => setSelectedLoanId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300"
-                >
-                  <option value="">-- Choose active loan --</option>
-                  {activeBorrowedLoans.map(l => (
-                    <option key={l.id} value={l.id}>
-                      {l.partyName} (Bal: {currencySymbol}{l.remainingBalance.toLocaleString()})
-                    </option>
-                  ))}
-                </select>
+                {activeBorrowedLoans.length === 0 ? (
+                  <div className="p-2.5 bg-white border border-dashed border-purple-300 rounded-lg text-xs text-purple-800">
+                    ℹ️ No active borrowed loans found in Loans view. This repayment will be recorded under <strong>Loan Repayment / EMI</strong>.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedLoanId}
+                    onChange={(e) => setSelectedLoanId(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm bg-white border border-purple-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium"
+                  >
+                    <option value="">-- Choose active loan to reduce debt --</option>
+                    {activeBorrowedLoans.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.partyName} (Debt: {currencySymbol}{l.remainingBalance.toLocaleString()}) {l.monthlyEmi > 0 ? `• EMI ${currencySymbol}${l.monthlyEmi}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Capital / Principal
+                    Capital / Principal Paid
                   </label>
                   <input
                     type="number"
@@ -359,6 +498,7 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
                     onChange={(e) => setPrincipalPaid(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300"
                   />
+                  <span className="text-[10px] text-gray-400 block mt-0.5">Directly lowers loan balance</span>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -372,153 +512,255 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
                     onChange={(e) => setInterestPaid(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300"
                   />
+                  <span className="text-[10px] text-gray-400 block mt-0.5">Bank interest / fee charge</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Category Selection */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
-              Select Category
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {(type === 'EXPENSE' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map((cat) => {
-                const isSelected = category === cat;
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => handleCategorySelect(cat)}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-medium text-left border transition-all flex items-center justify-between ${
-                      isSelected
-                        ? 'bg-purple-50 border-purple-400 text-purple-900 shadow-sm font-semibold'
-                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
-                    }`}
-                  >
-                    <span className="truncate">{cat}</span>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 flex-shrink-0 ml-1" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Custom Category Input if "Other" or "Other - all other expenses" */}
-            {(category === 'Other - all other expenses' || category === 'Other') && (
-              <div className="mt-3 p-3 bg-purple-50/60 border border-purple-200 rounded-xl">
-                <label className="block text-xs font-semibold text-purple-900 mb-1">
-                  ✏️ Type Custom Category Name:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Cinema tickets, Gym membership, Pet food"
-                  value={customCategory}
-                  onChange={(e) => setCustomCategory(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
-                />
-              </div>
-            )}
-
-            {/* Bill Sub-options if "Bills" */}
-            {category === 'Bills' && (
-              <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
-                <span className="block text-xs font-semibold text-gray-700">
-                  Select Bill Type or enter description:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {BILL_SUB_OPTIONS.map((sub) => {
-                    const isSelected = billSubCategory === sub;
-                    return (
-                      <button
-                        key={sub}
-                        type="button"
-                        onClick={() => setBillSubCategory(sub)}
-                        className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
-                          isSelected
-                            ? 'bg-emerald-700 text-white border-emerald-700 font-medium'
-                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                        }`}
-                      >
-                        {sub}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {billSubCategory === 'Other Bill' && (
-                  <div className="pt-2">
-                    <input
-                      type="text"
-                      placeholder="Type custom bill name (e.g. Society Maintenance, Property Tax)"
-                      value={customBill}
-                      onChange={(e) => setCustomBill(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Bank Account Selection (Linked to Balance) */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Link to Bank / Account
+          {/* Category Selection for EXPENSE, INCOME, and INVESTMENT */}
+          {entryMode !== 'LOAN_REPAYMENT' && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+                {entryMode === 'INVESTMENT' ? 'Select Investment Type' : 'Select Category'}
               </label>
-              <span className="text-xs text-gray-400">Updates live balance</span>
-            </div>
-
-            {bankAccountsWithBalance.length === 0 ? (
-              <div className="p-3 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center">
-                <p className="text-xs text-gray-500">No bank accounts added yet.</p>
-                <p className="text-xs text-emerald-700 font-medium mt-0.5">
-                  You can still record transaction or add accounts via Bank Accounts modal.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedAccountId('')}
-                  className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
-                    selectedAccountId === ''
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-semibold'
-                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="font-medium">None / Unlinked</div>
-                  <div className="text-[11px] text-gray-400">No account impact</div>
-                </button>
-
-                {bankAccountsWithBalance.map((acc) => {
-                  const isSelected = selectedAccountId === acc.id;
-                  const isNegative = acc.liveBalance < 0;
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {(entryMode === 'INVESTMENT'
+                  ? INVESTMENT_CATEGORIES
+                  : entryMode === 'INCOME'
+                    ? INCOME_CATEGORIES
+                    : EXPENSE_CATEGORIES
+                ).map((cat) => {
+                  const isSelected = category === cat;
                   return (
                     <button
-                      key={acc.id}
+                      key={cat}
                       type="button"
-                      onClick={() => setSelectedAccountId(acc.id)}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                      onClick={() => handleCategorySelect(cat)}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-medium text-left border transition-all flex items-center justify-between cursor-pointer ${
                         isSelected
-                          ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-semibold shadow-xs'
-                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                          ? entryMode === 'INVESTMENT'
+                            ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-xs font-bold'
+                            : entryMode === 'INCOME'
+                              ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-xs font-bold'
+                              : 'bg-rose-50 border-rose-400 text-rose-900 shadow-xs font-bold'
+                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
                       }`}
                     >
-                      <div className="text-xs font-bold truncate flex items-center justify-between">
-                        <span>{acc.name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-emerald-700" />}
-                      </div>
-                      <div className="text-[11px] text-gray-500 truncate mt-0.5">
-                        Bal: <span className={isNegative ? 'text-red-600 font-medium' : 'text-emerald-700 font-medium'}>
-                          {currencySymbol}{acc.liveBalance.toLocaleString()}
-                        </span>
-                      </div>
+                      <span className="truncate">{cat}</span>
+                      {isSelected && (
+                        <Check className={`w-3.5 h-3.5 flex-shrink-0 ml-1 ${
+                          entryMode === 'INVESTMENT'
+                            ? 'text-indigo-600'
+                            : entryMode === 'INCOME'
+                              ? 'text-emerald-600'
+                              : 'text-rose-600'
+                        }`} />
+                      )}
                     </button>
                   );
                 })}
               </div>
+
+              {/* Custom Category Input if "Other" */}
+              {entryMode === 'INVESTMENT' && category === 'Other Investment' && (
+                <div className="mt-3 p-3 bg-indigo-50/60 border border-indigo-200 rounded-xl animate-fadeIn">
+                  <label className="block text-xs font-semibold text-indigo-900 mb-1">
+                    ✏️ Type Investment Asset Name:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. SGB Sovereign Gold, Real Estate REIT, Startup equity, P2P"
+                    value={customInvestment}
+                    onChange={(e) => setCustomInvestment(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              )}
+
+              {(entryMode === 'EXPENSE' || entryMode === 'INCOME') &&
+                (category === 'Other - all other expenses' || category === 'Other') && (
+                <div className="mt-3 p-3 bg-purple-50/60 border border-purple-200 rounded-xl animate-fadeIn">
+                  <label className="block text-xs font-semibold text-purple-900 mb-1">
+                    ✏️ Type Custom Category Name:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Cinema tickets, Gym membership, Pet food"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                </div>
+              )}
+
+              {/* Bill Sub-options if "Bills" */}
+              {entryMode === 'EXPENSE' && category === 'Bills' && (
+                <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2 animate-fadeIn">
+                  <span className="block text-xs font-semibold text-gray-700">
+                    Select Bill Type or enter description:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {BILL_SUB_OPTIONS.map((sub) => {
+                      const isSelected = billSubCategory === sub;
+                      return (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => setBillSubCategory(sub)}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-emerald-700 text-white border-emerald-700 font-medium'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {billSubCategory === 'Other Bill' && (
+                    <div className="pt-2">
+                      <input
+                        type="text"
+                        placeholder="Type custom bill name (e.g. Society Maintenance, Property Tax)"
+                        value={customBill}
+                        onChange={(e) => setCustomBill(e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bank / Credit Card Selection */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                {entryMode === 'INVESTMENT'
+                  ? 'Invested From Bank / Account'
+                  : entryMode === 'LOAN_REPAYMENT'
+                    ? 'Paid From Bank / Account'
+                    : entryMode === 'INCOME'
+                      ? 'Deposit To Bank / Account'
+                      : 'Pay From Bank or Credit Card'}
+              </label>
+              <span className="text-xs text-gray-400">Updates live balance or card limit</span>
+            </div>
+
+            {/* Credit Cards (Spend using Card) */}
+            {creditCardAccounts.length > 0 && entryMode === 'EXPENSE' && (
+              <div className="space-y-1.5 p-3 bg-rose-50/60 border border-rose-200/80 rounded-2xl">
+                <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Pay With Credit Card (Deducts from available limit)</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {creditCardAccounts.map((card) => {
+                    const isSelected = selectedAccountId === card.id;
+                    const cardLimit = card.creditLimit || 0;
+                    const cardSpent = card.currentSpent || 0;
+                    const cardAvail = card.availableLimit !== undefined ? card.availableLimit : Math.max(0, cardLimit - cardSpent);
+
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAccountId(card.id);
+                          setPaymentMode('Card');
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-rose-500 bg-white text-rose-950 font-semibold shadow-xs ring-2 ring-rose-400'
+                            : 'border-rose-200 bg-white/80 text-gray-800 hover:bg-white'
+                        }`}
+                      >
+                        <div className="text-xs font-bold truncate flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <CreditCard className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                            {card.name}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />}
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-1.5 flex items-center justify-between">
+                          <span>
+                            Avail Limit: <strong className="text-emerald-700 font-bold">{currencySymbol}{cardAvail.toLocaleString()}</strong>
+                          </span>
+                          <span className="text-rose-600 font-semibold">
+                            Spent: {currencySymbol}{cardSpent.toLocaleString()}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
+
+            {/* Bank Accounts & Cash */}
+            <div className="space-y-1.5">
+              {creditCardAccounts.length > 0 && entryMode === 'EXPENSE' && (
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1 pt-1">
+                  <Landmark className="w-3.5 h-3.5" />
+                  <span>Bank Accounts & Cash</span>
+                </span>
+              )}
+
+              {bankAndCashAccounts.length === 0 && creditCardAccounts.length === 0 ? (
+                <div className="p-3 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center">
+                  <p className="text-xs text-gray-500">No bank accounts or credit cards added yet.</p>
+                  <p className="text-xs text-emerald-700 font-medium mt-0.5">
+                    You can still record transaction or add accounts via Bank Accounts modal.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAccountId('')}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                      selectedAccountId === ''
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-semibold'
+                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="font-medium">None / Unlinked</div>
+                    <div className="text-[11px] text-gray-400">No account impact</div>
+                  </button>
+
+                  {bankAndCashAccounts.map((acc) => {
+                    const isSelected = selectedAccountId === acc.id;
+                    const isNegative = acc.liveBalance < 0;
+                    return (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => setSelectedAccountId(acc.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-semibold shadow-xs'
+                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="text-xs font-bold truncate flex items-center justify-between">
+                          <span>{acc.name}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-emerald-700" />}
+                        </div>
+                        <div className="text-[11px] text-gray-500 truncate mt-0.5">
+                          Bal: <span className={isNegative ? 'text-red-600 font-medium' : 'text-emerald-700 font-medium'}>
+                            {currencySymbol}{acc.liveBalance.toLocaleString()}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Payment Mode */}
@@ -532,9 +774,9 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
                   key={mode}
                   type="button"
                   onClick={() => setPaymentMode(mode)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
                     paymentMode === mode
-                      ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
+                      ? 'bg-gray-900 text-white border-gray-900 shadow-xs'
                       : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
                   }`}
                 >
@@ -566,7 +808,13 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
               </label>
               <input
                 type="text"
-                placeholder="e.g. D-Mart bill, fuel for Pune trip"
+                placeholder={
+                  entryMode === 'INVESTMENT'
+                    ? 'e.g. Monthly SIP in Nifty 50, bought 10 shares of Infosys'
+                    : entryMode === 'LOAN_REPAYMENT'
+                      ? 'e.g. Month 14 EMI installment for Home Loan'
+                      : 'e.g. D-Mart bill, fuel for Pune trip'
+                }
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600"
@@ -580,19 +828,31 @@ export default function AddTransactionModal({ isOpen, onClose, initialData = nul
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors"
+            className="px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            className={`px-6 py-2.5 text-sm font-bold text-white rounded-xl shadow-md transition-all ${
-              type === 'EXPENSE'
-                ? 'bg-red-600 hover:bg-red-700 shadow-red-200'
-                : 'bg-emerald-700 hover:bg-emerald-800 shadow-emerald-200'
+            className={`px-6 py-2.5 text-sm font-bold text-white rounded-xl shadow-md transition-all cursor-pointer ${
+              entryMode === 'INVESTMENT'
+                ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                : entryMode === 'LOAN_REPAYMENT'
+                  ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'
+                  : entryMode === 'INCOME'
+                    ? 'bg-emerald-700 hover:bg-emerald-800 shadow-emerald-200'
+                    : 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'
             }`}
           >
-            {initialData ? 'Update Transaction' : 'Save Transaction'}
+            {initialData
+              ? 'Update Entry'
+              : entryMode === 'INVESTMENT'
+                ? 'Save Investment'
+                : entryMode === 'LOAN_REPAYMENT'
+                  ? 'Save Loan Repayment'
+                  : entryMode === 'INCOME'
+                    ? 'Save Income'
+                    : 'Save Expense'}
           </button>
         </div>
       </div>

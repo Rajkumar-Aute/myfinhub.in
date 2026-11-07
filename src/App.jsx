@@ -7,16 +7,16 @@ import AddTransactionModal from './components/AddTransactionModal';
 import BankAccountsModal from './components/BankAccountsModal';
 import SettingsModal from './components/SettingsModal';
 import LoginScreen from './components/LoginScreen';
-import { useKhata } from './context/KhataContext';
+import { useFinHub } from './context/FinHubContext';
 import { Plus } from 'lucide-react';
 
 export default function App() {
-  const { user } = useKhata();
+  const { user } = useFinHub();
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'loans' | 'reports'
 
   // Standalone offline override state (if user explicitly clicks 'Use Offline Mode')
   const [isOfflineMode, setIsOfflineMode] = useState(() => {
-    return localStorage.getItem('khata_use_offline_mode') === 'true';
+    return localStorage.getItem('myfinhub_use_offline_mode') === 'true';
   });
 
   // Modal visibility states
@@ -33,14 +33,24 @@ export default function App() {
       <LoginScreen
         onContinueOffline={() => {
           setIsOfflineMode(true);
-          localStorage.setItem('khata_use_offline_mode', 'true');
+          localStorage.setItem('myfinhub_use_offline_mode', 'true');
         }}
       />
     );
   }
 
-  const handleOpenAddTx = (type = 'EXPENSE') => {
-    setTxInitialData({ type });
+  const handleOpenAddTx = (modeOrData = 'EXPENSE') => {
+    if (typeof modeOrData === 'string') {
+      if (modeOrData === 'LOAN_REPAYMENT') {
+        setTxInitialData({ entryMode: 'LOAN_REPAYMENT', type: 'EXPENSE', isLoanRepayment: true });
+      } else if (modeOrData === 'INVESTMENT') {
+        setTxInitialData({ entryMode: 'INVESTMENT', type: 'EXPENSE', isInvestment: true });
+      } else {
+        setTxInitialData({ entryMode: modeOrData, type: modeOrData });
+      }
+    } else {
+      setTxInitialData(modeOrData);
+    }
     setIsAddTxOpen(true);
   };
 
@@ -56,7 +66,7 @@ export default function App() {
 
   const handleOpenLogin = () => {
     setIsOfflineMode(false);
-    localStorage.removeItem('khata_use_offline_mode');
+    localStorage.removeItem('myfinhub_use_offline_mode');
   };
 
   return (

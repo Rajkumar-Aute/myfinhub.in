@@ -3,7 +3,7 @@ import {
   X, Cloud, Download, Upload, RefreshCw,
   Check, AlertTriangle, LogOut, CheckCircle, ShieldCheck
 } from 'lucide-react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 
 export default function SettingsModal({ isOpen, onClose }) {
   const {
@@ -18,7 +18,7 @@ export default function SettingsModal({ isOpen, onClose }) {
     currencyCode,
     updateCurrency,
     lastSyncTime
-  } = useKhata();
+  } = useFinHub();
 
   const [importStatus, setImportStatus] = useState('');
 

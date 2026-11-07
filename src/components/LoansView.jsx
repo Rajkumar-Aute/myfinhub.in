@@ -4,7 +4,7 @@ import {
   Clock, AlertCircle, Phone, Calendar, Trash2, ChevronDown,
   ChevronUp, DollarSign, X, Check
 } from 'lucide-react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 
 export default function LoansView() {
   const {
@@ -14,7 +14,7 @@ export default function LoansView() {
     settleLoan,
     addLoanRepayment,
     currencySymbol
-  } = useKhata();
+  } = useFinHub();
 
   const [activeTab, setActiveTab] = useState('BORROWED'); // 'BORROWED' | 'LENT'
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);

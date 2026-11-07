@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import {
   Cloud, ShieldCheck, X, AlertCircle, Sparkles
 } from 'lucide-react';
-import { useKhata } from '../context/KhataContext';
+import { useFinHub } from '../context/FinHubContext';
 
 export default function ConnectDriveModal({ isOpen, onClose }) {
-  const { loginWithGoogle, syncStatus } = useKhata();
+  const { loginWithGoogle, syncStatus } = useFinHub();
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
